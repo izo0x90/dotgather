@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # TODO:
 # - Implement Chose installation dir on build
-#  - Implement GOHOME ✓
-#  - add .dotgatherhome creation to build cmd
-#  - Help for setting up env. variable
+#   - Implement GOHOME ✓
+#   - add .dotgatherhome creation to build cmd ✓
+#   - Help for setting up env. variable
+#       - Dump cmd to add to .rc file to add env. variable
 # - Implement disperse undo
 # - Implement disperse diff-only
-# - Implement --force directory path
+# - Implement --force directory path ✓
+# - Implement git init on setup
 
 import argparse
 import errno
@@ -135,7 +137,7 @@ def build(install_path):
     if os.path.exists(install_path):
         print(f'File with the same name {install_path} already exists, please delete first! 🖐️')
         return
-    print(install_path)
+
     shutil.copy(__file__, install_path)
     os.chmod(install_path, stat.S_IRWXU)
     print('🍾🙌👯‍♀️')
