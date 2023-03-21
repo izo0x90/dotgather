@@ -6,14 +6,16 @@
 #  - Help for setting up env. variable
 # - Implement disperse undo
 # - Implement disperse diff-only
-# - Implement --force directory path 
+# - Implement --force directory path
 
 import argparse
 import errno
 import os
-import socket
-import subprocess
+import pathlib
 import shutil
+import socket
+import stat
+import subprocess
 
 GIT_DIFF_CMD = 'git diff --shortstat'
 TERM_WIDTH, _ = os.get_terminal_size()
@@ -24,7 +26,7 @@ UNDO_DIR = 'undo'
 GATHER_LIST_NAME = 'dotfilelist'
 IS_DOTGATHER_DIR_DOTFILE_NAME = '.dotgatherhome'
 DOTGATHER_DIR_ENV_VAR_NAME = 'DOTGATHERHOME'
-DESCRIPTION = 'Collects a list of dot file (or other config) in a git repo.\nOrganized by hostname.'
+DESCRIPTION = 'Collects a list of dot files (or other configs) in a git repo.\nOrganized by hostname.'
 
 
 class GatherException(Exception):
@@ -38,15 +40,18 @@ def mkdir_or_existing(directory_path):
     except FileExistsError:
         pass
 
+
 def split_path_dir_file(path):
     dir_path, file_name = path.rsplit('/', 1)
     return dir_path, file_name
 
+
 def git_diff(source_file_path, target_file_path):
-    git_output = subprocess.run(['git', 'diff', '--shortstat', target_file_path, source_file_path], 
-        capture_output=True)
+    git_output = subprocess.run(['git', 'diff', '--shortstat', target_file_path, source_file_path],
+                                capture_output=True)
 
     return bool(git_output.stdout)
+
 
 def print_center(text, padding_character='-'):
     print(f'[ {text} ]'.center(TERM_WIDTH, padding_character))
@@ -61,26 +66,31 @@ def print_aligned(longest_text_prefix, longest_text, other_text_items: list[tupl
 
 
 def go_home():
-        try:
-            os.chdir(os.path.expanduser(os.getenv(DOTGATHER_DIR_ENV_VAR_NAME)) or '')
-        except FileNotFoundError:
-            pass
-        
-        if not os.path.exists(IS_DOTGATHER_DIR_DOTFILE_NAME):
-            raise GatherException(f'Not in dotgather home dir... manually change to it. ' + \
-                    'Or set {DOTGATHER_DIR_ENV_VAR_NAME} env. variable.')
+    try:
+        os.chdir(os.path.expanduser(os.getenv(DOTGATHER_DIR_ENV_VAR_NAME)) or '')
+    except FileNotFoundError:
+        pass
+
+    if not os.path.exists(IS_DOTGATHER_DIR_DOTFILE_NAME):
+        raise GatherException(f'Not in dotgather home dir... manually change to it. ' +
+                                'Or set {DOTGATHER_DIR_ENV_VAR_NAME} env. variable.')
+
 
 # Command funcs.
 def process_arguments():
     parser = argparse.ArgumentParser(description=DESCRIPTION)
 
     if parser.prog != CMD_NAME:
-        parser.add_argument('--build',
+        parser.add_argument('--install',
                             help='Copy source to runnable script to "release" updated version.',
                             action='store_const',
                             const=build,
                             dest='command')
-    
+
+    parser.add_argument('--force-path', type=pathlib.Path, help='Force an explicit path for a commnad to operate on ' +
+                        'Maybe only use this with --install, unless you really know what this script ' +
+                        'does ¯\\_(ツ)_/¯ !')
+
     parser.add_argument('--setup',
                         help='Setup a dotgather directory for a specific machine.',
                         action='store_const',
@@ -112,11 +122,24 @@ def process_arguments():
                         dest='command')
 
     args = parser.parse_args()
+
+    args.installing = args.command == build
+
     return args, parser.prog
 
-def build(_):
-    shutil.copy(__file__, os.path.join('..', CMD_NAME))
+
+def build(install_path):
+    install_path = install_path or '..'
+    install_path = os.path.join(install_path, CMD_NAME)
+
+    if os.path.exists(install_path):
+        print(f'File with the same name {install_path} already exists, please delete first! 🖐️')
+        return
+    print(install_path)
+    shutil.copy(__file__, install_path)
+    os.chmod(install_path, stat.S_IRWXU)
     print('🍾🙌👯‍♀️')
+
 
 def setup(directory):
     if os.path.exists(directory):
@@ -133,6 +156,7 @@ def setup(directory):
         except EOFError:
             dotfile_paths_file.writelines(dotfile_paths)
             print('\nSaving gather list file! 🙌')
+
 
 def gather_dotfiles(directory):
     print('Any existing undo will be removed as part of gathering new dotfile crop.')
@@ -179,6 +203,7 @@ def gather_dotfiles(directory):
     print('Great success!🧙🏿‍♂️')
     print('Like wild mushrooms 🍄 in a damp forest your dotfiles (and other configs) have been gathared! ✨')
 
+
 def disperse_dotfiles(directory):
     data_dir_path = os.path.join(directory, DATA_DIR)
     undo_dir_path = os.path.join(directory, UNDO_DIR)
@@ -197,11 +222,11 @@ def disperse_dotfiles(directory):
 
             target_file_path = os.path.expanduser(os.path.join(actual_root, file))
             source_file_path = os.path.join(root, file)
-            
+
             target_exists = os.path.exists(target_file_path)
 
             print_aligned(f'Source >> ', source_file_path, [('Target >> ', target_file_path)])
-             
+
             if not git_diff(source_file_path, target_file_path):
                 print('These two files are the same, skipping dispersal. ♻️')
                 continue
@@ -233,6 +258,7 @@ def disperse_dotfiles(directory):
     print('\nTada!!🧙🏿‍♂️')
     print(f'Successfuly seeded {files_dispersed} files! 🚜 ✨')
 
+
 def clean_undo(directory):
     undo_dir_path = os.path.join(directory, UNDO_DIR)
     undo_exists = os.path.exists(undo_dir_path)
@@ -249,16 +275,18 @@ def clean_undo(directory):
     shutil.rmtree(undo_dir_path)
     print('Undo files removed. 🧹')
 
+
 def undo_disperse(directory):
     # TODO: Revert files from an undo dir
     pass
 
-def main():
-    PROCESS_SUCCSESS = 0 
-    PROCESS_ERRORED = 1
-    args,_ = process_arguments()
 
-    explicit_dir = None
+def main():
+    PROCESS_SUCCSESS = 0
+    PROCESS_ERRORED = 1
+    args, _ = process_arguments()
+
+    explicit_dir = args.force_path
     hostname = socket.gethostname()
     dir = explicit_dir or hostname
 
@@ -270,7 +298,13 @@ def main():
         if not args.command:
             raise GatherException('What should I do? Try --help. 🤔')
 
-        go_home()
+        if not args.installing:
+            if explicit_dir and input(f'You sure you want to force this "{explicit_dir}" ' +
+                                      'path. Bad things might happen? "Y" or "N" >') != 'Y':
+                return PROCESS_ERRORED
+
+            go_home()
+
         args.command(dir)
     except GatherException as e:
         print(f'\n\n{str(e)}\n')
@@ -278,6 +312,6 @@ def main():
 
     return PROCESS_SUCCSESS
 
+
 if __name__ == '__main__':
     raise SystemExit(main())
-
