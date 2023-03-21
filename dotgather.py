@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
+
 # TODO:
-# - Implement Chose installation dir on build
+# - Implement --force directory path ✓
+# - Implement chose installation dir on install
 #   - Implement GOHOME ✓
-#   - add .dotgatherhome creation to build cmd ✓
-#   - Help for setting up env. variable
+#   - Add .dotgatherhome creation to build cmd ✓
+#   - Add --force-path and default dir to install help
+#   - Create .dotgatherhome on install
+#   - Implement install default dir
 #       - Dump cmd to add to .rc file to add env. variable
+#   - Help for setting up env. variable
 # - Implement disperse undo
 # - Implement disperse diff-only
-# - Implement --force directory path ✓
-# - Implement git init on setup
+# - Finish setup
+#   - Implement git init on setup
+# - Fully test and re-enable disperse
+#   - Maybe more granular disperse as option?
 
 import argparse
 import errno
@@ -191,8 +198,8 @@ def gather_dotfiles(directory):
                         mkdir_or_existing(new_dir)
 
                         shutil.copy(file_path, dest_path)
-                    else: 
-                        raise GatherException(f'Something went terribly wrong! Go outside and take a walk. '+ \
+                    else:
+                        raise GatherException(f'Something went terribly wrong! Go outside and take a walk. ' +
                                 'Previous gather backed up in {data_temp_dir_path}. 🗑️🔥')
     except FileNotFoundError:
         raise GatherException('Directory for this host has not been setup. Try --setup. ⚙️')
@@ -253,6 +260,7 @@ def disperse_dotfiles(directory):
                 # print_center('Created undo for 💾')
 
             # Copy repo dotfile to target location
+            # TODO: Re-enable copy on disperse
             # shutil.copy(source_file_path, target_file_path)
             files_dispersed += 1
             print('File dispersed. 🌱')
