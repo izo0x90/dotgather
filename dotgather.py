@@ -5,11 +5,11 @@
 # - Implement chose installation dir on install
 #   - Implement GOHOME ✓
 #   - Add .dotgatherhome creation to build cmd ✓
-#   - Add --force-path and default dir to install help
-#   - Create .dotgatherhome on install
-#   - Implement install default dir
-#       - Dump cmd to add to .rc file to add env. variable
-#   - Help for setting up env. variable
+#   - Add --force-path and default dir to install help ✓
+#   - Create .dotgatherhome on install ✓
+#   - Implement install default dir ✓
+#       - Dump cmd to add to .rc file to add env. variable ✓
+#   - Help for setting up env. variable ✓
 # - Implement disperse undo
 # - Implement disperse diff-only
 # - Finish setup
@@ -36,7 +36,8 @@ GATHER_LIST_NAME = 'dotfilelist'
 IS_DOTGATHER_DIR_DOTFILE_NAME = '.dotgatherhome'
 DOTGATHER_DIR_ENV_VAR_NAME = 'DOTGATHERHOME'
 DESCRIPTION = 'Collects a list of dot files (or other configs) in a git repo.\nOrganized by hostname.'
-
+PROCESS_SUCCSESS = 0
+PROCESS_ERRORED = 1
 
 class GatherException(Exception):
     pass
@@ -76,7 +77,7 @@ def print_aligned(longest_text_prefix, longest_text, other_text_items: list[tupl
 
 def go_home():
     try:
-        os.chdir(os.path.expanduser(os.getenv(DOTGATHER_DIR_ENV_VAR_NAME)) or '')
+        os.chdir(os.path.expanduser((os.getenv(DOTGATHER_DIR_ENV_VAR_NAME)) or pathlib.Path()))
     except FileNotFoundError:
         pass
 
@@ -89,19 +90,12 @@ def go_home():
 def process_arguments():
     parser = argparse.ArgumentParser(description=DESCRIPTION)
 
-    if parser.prog != CMD_NAME:
-        parser.add_argument('--install',
-                            help='Copy source to runnable script to "release" updated version.',
-                            action='store_const',
-                            const=build,
-                            dest='command')
-
     parser.add_argument('--force-path', type=pathlib.Path, help='Force an explicit path for a commnad to operate on ' +
-                        'Maybe only use this with --install, unless you really know what this script ' +
-                        'does ¯\\_(ツ)_/¯ !')
+                        'Maybe don\'t do this unless you really know what this script does ¯\\_(ツ)_/¯ !')
 
     parser.add_argument('--setup',
-                        help='Setup a dotgather directory for a specific machine.',
+                        help='Setup a dotgather directory for a specific machine. Host name will be used.' +
+                        '\nCreate list of configs gather should target!',
                         action='store_const',
                         const=setup,
                         dest='command')
@@ -132,22 +126,7 @@ def process_arguments():
 
     args = parser.parse_args()
 
-    args.installing = args.command == build
-
     return args, parser.prog
-
-
-def build(install_path):
-    install_path = install_path or '..'
-    install_path = os.path.join(install_path, CMD_NAME)
-
-    if os.path.exists(install_path):
-        print(f'File with the same name {install_path} already exists, please delete first! 🖐️')
-        return
-
-    shutil.copy(__file__, install_path)
-    os.chmod(install_path, stat.S_IRWXU)
-    print('🍾🙌👯‍♀️')
 
 
 def setup(directory):
@@ -156,6 +135,7 @@ def setup(directory):
 
     os.mkdir(directory)
     file = os.path.join(directory, GATHER_LIST_NAME)
+    print('Create target list of config files that should be gathered:')
     with open(file, 'w') as dotfile_paths_file:
         try:
             dotfile_paths = list()
@@ -292,8 +272,6 @@ def undo_disperse(directory):
 
 
 def main():
-    PROCESS_SUCCSESS = 0
-    PROCESS_ERRORED = 1
     args, _ = process_arguments()
 
     explicit_dir = args.force_path
@@ -308,12 +286,11 @@ def main():
         if not args.command:
             raise GatherException('What should I do? Try --help. 🤔')
 
-        if not args.installing:
-            if explicit_dir and input(f'You sure you want to force this "{explicit_dir}" ' +
-                                      'path. Bad things might happen? "Y" or "N" >') != 'Y':
-                return PROCESS_ERRORED
+        if explicit_dir and input(f'You sure you want to force this "{explicit_dir}" ' +
+                                  'path. Bad things might happen? "Y" or "N" >') != 'Y':
+            return PROCESS_ERRORED
 
-            go_home()
+        go_home()
 
         args.command(dir)
     except GatherException as e:
@@ -321,6 +298,55 @@ def main():
         return PROCESS_ERRORED
 
     return PROCESS_SUCCSESS
+
+
+if __file__[-len(CMD_NAME):] != CMD_NAME:
+    def install():
+        parser = argparse.ArgumentParser(description=f'{DESCRIPTION} Install the script to a select directory to use!')
+
+        parser.add_argument('--install_path',
+                            type=pathlib.Path,
+                            required=True,
+                            help='Select a path to install gather script and store dotfiles in.')
+
+        parser.add_argument('--upgrade',
+                            help='Upgrade existing installation to new version.',
+                            action="store_true")
+
+        args = parser.parse_args()
+
+        directory = args.install_path
+        install_path = os.path.join(directory, CMD_NAME)
+        is_home_dir_file_path = os.path.join(directory, IS_DOTGATHER_DIR_DOTFILE_NAME)
+        full_install = not args.upgrade
+
+        if not os.path.exists(directory):
+            print(f'Directory "{directory}" not found, creating now!')
+            os.mkdir(directory)
+
+        if os.path.exists(install_path) and full_install:
+            print(f'File with the same name "{install_path}" already exists, please delete first! 🖐️')
+            return PROCESS_ERRORED
+
+        shutil.copy(__file__, install_path)
+        os.chmod(install_path, stat.S_IRWXU)
+
+        if full_install:
+            open(is_home_dir_file_path, 'w').close()
+
+            print('To run dotgather from anywhere:')
+            print(f'Add `{install_path}` to you system path')
+            print(f'Along with `export {DOTGATHER_DIR_ENV_VAR_NAME}="{directory}"` to you .rc file.')
+
+        else:
+            print('Upgrade complete!')
+
+        print('🍾🙌👯‍♀️')
+
+        return PROCESS_SUCCSESS
+
+    if __name__ == '__main__':
+        raise SystemExit(install())
 
 
 if __name__ == '__main__':
