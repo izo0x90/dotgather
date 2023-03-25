@@ -10,10 +10,10 @@
 #   - Implement install default dir ✓
 #       - Dump cmd to add to .rc file to add env. variable ✓
 #   - Help for setting up env. variable ✓
+# - Finish setup ✓
+#   - Implement git init on setup ✓
 # - Implement disperse undo
 # - Implement disperse diff-only
-# - Finish setup
-#   - Implement git init on setup
 # - Fully test and re-enable disperse
 #   - Maybe more granular disperse as option?
 
@@ -26,7 +26,17 @@ import socket
 import stat
 import subprocess
 
-GIT_DIFF_CMD = 'git diff --shortstat'
+
+class GIT_COMMANDS:
+    MAIN = 'git'
+    DIFF = 'diff'
+    INIT = 'init'
+    REV_PARSE = 'rev-parse'
+    SHORSTAT_FLAG = '--shortstat'
+    INSIDE_WORK_TREE_FLAG = '--is-inside-work-tree'
+    INSIDE_WORK_TREE_RESPONSE = 'true'
+
+
 TERM_WIDTH, _ = os.get_terminal_size()
 CMD_NAME = 'dg'
 DATA_DIR = 'data'
@@ -38,6 +48,7 @@ DOTGATHER_DIR_ENV_VAR_NAME = 'DOTGATHERHOME'
 DESCRIPTION = 'Collects a list of dot files (or other configs) in a git repo.\nOrganized by hostname.'
 PROCESS_SUCCSESS = 0
 PROCESS_ERRORED = 1
+
 
 class GatherException(Exception):
     pass
@@ -56,8 +67,28 @@ def split_path_dir_file(path):
     return dir_path, file_name
 
 
+def git_init():
+    subprocess.run([GIT_COMMANDS.MAIN,
+                    GIT_COMMANDS.INIT])
+
+
+def git_is_inited():
+    git_output = subprocess.run([
+                                 GIT_COMMANDS.MAIN,
+                                 GIT_COMMANDS.REV_PARSE,
+                                 GIT_COMMANDS.INSIDE_WORK_TREE_FLAG
+                                ],
+                                capture_output=True)
+
+    return GIT_COMMANDS.INSIDE_WORK_TREE_RESPONSE == git_output.stdout.strip().decode()
+
+
 def git_diff(source_file_path, target_file_path):
-    git_output = subprocess.run(['git', 'diff', '--shortstat', target_file_path, source_file_path],
+    git_output = subprocess.run([GIT_COMMANDS.MAIN,
+                                 GIT_COMMANDS.DIFF,
+                                 GIT_COMMANDS.SHORSTAT_FLAG,
+                                 target_file_path,
+                                 source_file_path],
                                 capture_output=True)
 
     return bool(git_output.stdout)
@@ -90,20 +121,11 @@ def go_home():
 def process_arguments():
     parser = argparse.ArgumentParser(description=DESCRIPTION)
 
-    parser.add_argument('--force-path', type=pathlib.Path, help='Force an explicit path for a commnad to operate on ' +
-                        'Maybe don\'t do this unless you really know what this script does ¯\\_(ツ)_/¯ !')
-
     parser.add_argument('--setup',
                         help='Setup a dotgather directory for a specific machine. Host name will be used.' +
                         '\nCreate list of configs gather should target!',
                         action='store_const',
                         const=setup,
-                        dest='command')
-
-    parser.add_argument('--disperse',
-                        help='Place dotfile in active dirs. Will make undo backup.',
-                        action='store_const',
-                        const=disperse_dotfiles,
                         dest='command')
 
     parser.add_argument('--gather',
@@ -112,8 +134,14 @@ def process_arguments():
                         const=gather_dotfiles,
                         dest='command')
 
-    parser.add_argument('--undo',
-                        help='Undo last disperse for specific host',
+    parser.add_argument('--disperse',
+                        help='Place collected dotfile for current host in active dirs. Will make undo backup.',
+                        action='store_const',
+                        const=disperse_dotfiles,
+                        dest='command')
+
+    parser.add_argument('--undo-disperse',
+                        help='Undo last disperse for current host',
                         action='store_const',
                         const=undo_disperse,
                         dest='command')
@@ -124,6 +152,9 @@ def process_arguments():
                         const=clean_undo,
                         dest='command')
 
+    parser.add_argument('--force-path', type=pathlib.Path, help='Force an explicit path for a commnad to operate on ' +
+                        'Maybe don\'t do this unless you really know what this script does ¯\\_(ツ)_/¯ !')
+
     args = parser.parse_args()
 
     return args, parser.prog
@@ -132,6 +163,10 @@ def process_arguments():
 def setup(directory):
     if os.path.exists(directory):
         raise GatherException('Directory already exists! 🤷‍♀️')
+
+    if not git_is_inited():
+        git_init()
+        print('Git tracking initialized ...')
 
     os.mkdir(directory)
     file = os.path.join(directory, GATHER_LIST_NAME)
@@ -326,6 +361,7 @@ if __file__[-len(CMD_NAME):] != CMD_NAME:
 
         if os.path.exists(install_path) and full_install:
             print(f'File with the same name "{install_path}" already exists, please delete first! 🖐️')
+            print(f'Use --install --upgrade to replace existing copy of dotgather with this one.')
             return PROCESS_ERRORED
 
         shutil.copy(__file__, install_path)
