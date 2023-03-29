@@ -19,6 +19,7 @@
 #   - Clean up ✓
 # - Fully test and re-enable disperse
 #   - Maybe more granular disperse as option?
+# - Add version
 # - Implement disperse diff-only
 
 import argparse
