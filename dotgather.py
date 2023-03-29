@@ -2,7 +2,7 @@
 
 # TODO:
 # - Implement --force directory path ✓
-# - Implement chose installation dir on install
+# - Implement chose installation dir on install ✓
 #   - Implement GOHOME ✓
 #   - Add .dotgatherhome creation to build cmd ✓
 #   - Add --force-path and default dir to install help ✓
@@ -12,14 +12,14 @@
 #   - Help for setting up env. variable ✓
 # - Finish setup ✓
 #   - Implement git init on setup ✓
-# - Implement disperse undo
+# - Implement disperse undo ✓
 #   - Undo mechanism ✓
-#   - More granular control when individual target vs gathered diverged
-#   - Convert disperse to use walk_source_path_generate_alt_and_target
-#   - Clean up
-# - Implement disperse diff-only
+#   - Convert disperse to use walk_source_path_generate_alt_and_target ✓
+#   - More granular control when individual target vs gathered diverged ✓
+#   - Clean up ✓
 # - Fully test and re-enable disperse
 #   - Maybe more granular disperse as option?
+# - Implement disperse diff-only
 
 import argparse
 import errno
@@ -267,53 +267,43 @@ def disperse_dotfiles(directory):
     undo_dir_path = os.path.join(directory, UNDO_DIR)
 
     files_dispersed = 0
-    # TODO: Update disperse to use walk_source_path_generate_alt_and_target, clean up local path vars
-    for root, dirs, files in os.walk(data_dir_path, topdown=False):
-        for file in files:
-            print('\n')
-            [_, relative_path] = root.split(f'{data_dir_path}/', 1)
+    for paths in walk_source_path_generate_alt_and_target(data_dir_path, undo_dir_path):
+        print('\n')
 
-            undo_root = os.path.join(undo_dir_path, relative_path)
+        undo_file_path = paths.alt_file_path
+        source_file_path = paths.source_file_path
+        target_file_path = paths.target_file_path
+        target_exists = paths.target_exists
 
-            actual_root = root.replace(data_dir_path, '', 1)
+        print_aligned(f'Source >> ', source_file_path, [('Target >> ', target_file_path)])
 
-            undo_file_path = os.path.join(undo_root, file)
+        if not git_diff(source_file_path, target_file_path):
+            print('These two files are the same, skipping dispersal. ♻️')
+            continue
 
-            target_file_path = os.path.expanduser(os.path.join(actual_root, file))
-            source_file_path = os.path.join(root, file)
+        # Check if a file already exist in target location and backup for undo
+        if target_exists:
+            print_center('Target exists, backing up for undo ...')
 
-            target_exists = os.path.exists(target_file_path)
+            undo_exists = os.path.exists(undo_file_path)
+            if undo_exists:
+                if git_diff(undo_file_path, target_file_path):
+                    raise GatherException('A different undo state has been already saved. ' +
+                        'Use --clean 🧹 to clear existing undo if no longer relevant.🍏/🍎')
+                else:
+                    print('Skipping undo, it already exists! 🍏/🍏')
+                    continue
 
-            print_aligned(f'Source >> ', source_file_path, [('Target >> ', target_file_path)])
+            new_dir, _ = split_path_dir_file(undo_file_path)
+            mkdir_or_existing(new_dir)
+            shutil.copy(target_file_path, undo_file_path)
+            print_aligned('Undo >>>> ', undo_file_path, [('Target >> ', target_file_path)])
+            print_center('Created undo for 💾')
 
-            if not git_diff(source_file_path, target_file_path):
-                print('These two files are the same, skipping dispersal. ♻️')
-                continue
-
-            # Check if a file already exist in target location and backup for undo
-            if target_exists:
-                print_center('Target exists, backing up for undo ...')
-
-                undo_exists = os.path.exists(undo_file_path)
-                if undo_exists:
-                    if git_diff(undo_file_path, target_file_path):
-                        raise GatherException('A different undo state has been already saved. ' +
-                            'Use --clean 🧹 to clear existing undo if no longer relevant.🍏/🍎')
-                    else:
-                        print('Skipping undo, it already exists! 🍏/🍏')
-                        continue
-
-                new_dir, _ = split_path_dir_file(undo_file_path)
-                mkdir_or_existing(new_dir)
-                shutil.copy(target_file_path, undo_file_path)
-                print_aligned('Undo >>>> ', undo_file_path, [('Target >> ', target_file_path)])
-                # print_center('Created undo for 💾')
-
-            # Copy repo dotfile to target location
-            # TODO: Re-enable copy on disperse
-            # shutil.copy(source_file_path, target_file_path)
-            files_dispersed += 1
-            print('File dispersed. 🌱')
+        # Copy repo dotfile to target location
+        shutil.copy(source_file_path, target_file_path)
+        files_dispersed += 1
+        print('File dispersed. 🌱')
 
     print('\nTada!!🧙🏿‍♂️')
     print(f'Successfuly seeded {files_dispersed} files! 🚜 ✨')
@@ -340,34 +330,39 @@ def undo_disperse(directory):
     data_dir_path = os.path.join(directory, DATA_DIR)
     undo_dir_path = os.path.join(directory, UNDO_DIR)
 
-    files_reverted = 0
-    files_skipped = []  # TODO: More granular file diverged handling
+    files_skipped = []
+    files_to_copy = []
 
     for paths in walk_source_path_generate_alt_and_target(undo_dir_path, data_dir_path):
-        # TODO: Clean up local path vars
         data_file_path = paths.alt_file_path
-
         source_file_path = paths.source_file_path
         target_file_path = paths.target_file_path
-
         target_exists = paths.target_exists
 
-        print_aligned(f'Source >> ', source_file_path, [('Target >> ', target_file_path)])
-
         # If target exists make sure it is same as gathered version
-        if target_exists:
-            print_center('Target exists, checking if undo matches gathared version ...')
+        if target_exists and git_diff(data_file_path, target_file_path):
+            print_center('Target exists. Undo files and dispersed files have diverged, auto undo impossible!')
+            files_skipped.append((data_file_path, target_file_path))
+        else:
+            files_to_copy.append((source_file_path, target_file_path))
 
-            if git_diff(data_file_path, target_file_path):
-                raise GatherException('Undo files and dispersed files have diverged. ' +
+    if files_skipped:
+        print_center(f'The following {len(files_skipped)} files have diverged:')
+        for data_file_path, target_file_path in files_skipped:
+            print_aligned('Source (gathered  file) >> ', data_file_path,
+                          [('Target (dispersed file) >> ', target_file_path)])
+
+        confirm_recover_files = input(f'Type "YES" to confirm you want to still recover {len(files_to_copy)} files  ')
+        if confirm_recover_files != 'YES':
+            raise GatherException('Undo files and dispersed files have diverged. ' +
                             'Unfortunetly you will have to fix this manually. 🛠️')
 
-        # TODO: Re-enable copy on undo
-        # shutil.copy(source_file_path, target_file_path)
-        files_reverted += 1
-        print_center('Gathered file matches Target file, OK to undo. Reverted!')
+    print_center('Reverting dispersed files from undo:')
+    for source_file_path, target_file_path in files_to_copy:
+        shutil.copy(source_file_path, target_file_path)
+        print_aligned('Source file) >> ', source_file_path, [('Target file) >> ', target_file_path)])
 
-    print(f'Successfuly reverted {files_reverted} files!')
+    print(f'Successfuly reverted {len(files_to_copy)} files! Undo skipped on {len(files_skipped)} files!')
 
 
 def main():
