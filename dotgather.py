@@ -17,10 +17,12 @@
 #   - Convert disperse to use walk_source_path_generate_alt_and_target ✓
 #   - More granular control when individual target vs gathered diverged ✓
 #   - Clean up ✓
-# - Fully test and re-enable disperse
-#   - Maybe more granular disperse as option?
-# - Add version
-# - Implement disperse diff-only
+# - Add version ✓
+# - Fully test and re-enable disperse ✓
+# - Add README.MD with usage instructions
+# - Add check in undo if exiting same as undo
+# - Maybe more granular disperse as option? Next ver. maybe
+# - Implement disperse diff-only? Next ver. maybe
 
 import argparse
 import errno
@@ -43,6 +45,7 @@ class GIT_COMMANDS:
     INSIDE_WORK_TREE_RESPONSE = 'true'
 
 
+VERSION = '1.0.0'
 TERM_WIDTH, _ = os.get_terminal_size()
 CMD_NAME = 'dg'
 DATA_DIR = 'data'
@@ -51,7 +54,7 @@ UNDO_DIR = 'undo'
 GATHER_LIST_NAME = 'dotfilelist'
 IS_DOTGATHER_DIR_DOTFILE_NAME = '.dotgatherhome'
 DOTGATHER_DIR_ENV_VAR_NAME = 'DOTGATHERHOME'
-DESCRIPTION = 'Collects a list of dot files (or other configs) in a git repo.\nOrganized by hostname.'
+DESCRIPTION = f'ver. {VERSION} Collects a list of dot files (or other configs) in a git repo. Organized by hostname.'
 PROCESS_SUCCSESS = 0
 PROCESS_ERRORED = 1
 
@@ -82,7 +85,6 @@ def walk_source_path_generate_alt_and_target(source_base_path, alt_base_path):
 
     for root, dirs, files in os.walk(source_base_path, topdown=False):
         for file in files:
-            print('\n')
             [_, relative_path] = root.split(f'{source_base_path}/', 1)
 
             alt_root = os.path.join(alt_base_path, relative_path)
@@ -187,6 +189,12 @@ def process_arguments():
                         const=clean_undo,
                         dest='command')
 
+    parser.add_argument('--version',
+                        help='Show dotgather version',
+                        action='store_const',
+                        const=lambda: print(VERSION),
+                        dest='command')
+
     parser.add_argument('--force-path', type=pathlib.Path, help='Force an explicit path for a commnad to operate on ' +
                         'Maybe don\'t do this unless you really know what this script does ¯\\_(ツ)_/¯ !')
 
@@ -248,9 +256,13 @@ def gather_dotfiles(directory):
                         mkdir_or_existing(new_dir)
 
                         shutil.copy(file_path, dest_path)
+                    elif e.errno == errno.ENOENT:
+                        raise GatherException(f'No such file {file_path}.' +
+                                        f'Previous gather backed up in {data_temp_dir_path}. 🗑️🔥')
                     else:
-                        raise GatherException(f'Something went terribly wrong! Go outside and take a walk. ' +
-                                'Previous gather backed up in {data_temp_dir_path}. 🗑️🔥')
+                        raise GatherException('Something went terribly wrong! Go outside and take a walk. ' +
+                                f'Previous gather backed up in {data_temp_dir_path}. 🗑️🔥')
+
     except FileNotFoundError:
         raise GatherException('Directory for this host has not been setup. Try --setup. ⚙️')
 
@@ -360,6 +372,7 @@ def undo_disperse(directory):
 
     print_center('Reverting dispersed files from undo:')
     for source_file_path, target_file_path in files_to_copy:
+        print('\n')
         shutil.copy(source_file_path, target_file_path)
         print_aligned('Source file) >> ', source_file_path, [('Target file) >> ', target_file_path)])
 
