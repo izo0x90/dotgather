@@ -21,6 +21,7 @@
 # - Fully test and re-enable disperse ✓
 # - Add README.MD with usage instructions ✓
 # - Add check in undo if exiting same as undo ✓
+# - Better indication when no changes to gathered files have occurred
 # - Maybe more granular disperse as option? Next ver. maybe
 # - Implement disperse diff-only? Next ver. maybe
 
