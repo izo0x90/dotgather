@@ -192,7 +192,7 @@ def process_arguments():
     parser.add_argument('--version',
                         help='Show dotgather version',
                         action='store_const',
-                        const=lambda: print(VERSION),
+                        const=lambda _: print(VERSION),
                         dest='command')
 
     parser.add_argument('--force-path', type=pathlib.Path, help='Force an explicit path for a commnad to operate on ' +
