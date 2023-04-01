@@ -19,8 +19,8 @@
 #   - Clean up ✓
 # - Add version ✓
 # - Fully test and re-enable disperse ✓
-# - Add README.MD with usage instructions
-# - Add check in undo if exiting same as undo
+# - Add README.MD with usage instructions ✓
+# - Add check in undo if exiting same as undo ✓
 # - Maybe more granular disperse as option? Next ver. maybe
 # - Implement disperse diff-only? Next ver. maybe
 
@@ -344,6 +344,7 @@ def undo_disperse(directory):
     undo_dir_path = os.path.join(directory, UNDO_DIR)
 
     files_skipped = []
+    files_identical = []
     files_to_copy = []
 
     for paths in walk_source_path_generate_alt_and_target(undo_dir_path, data_dir_path):
@@ -352,31 +353,48 @@ def undo_disperse(directory):
         target_file_path = paths.target_file_path
         target_exists = paths.target_exists
 
+        # If target exists is it identical to undo version, no undo needed
+        if target_exists and not git_diff(source_file_path, target_file_path):
+            files_identical.append((source_file_path, target_file_path))
+
         # If target exists make sure it is same as gathered version
-        if target_exists and git_diff(data_file_path, target_file_path):
-            print_center('Target exists. Undo files and dispersed files have diverged, auto undo impossible!')
+        elif target_exists and git_diff(data_file_path, target_file_path):
             files_skipped.append((data_file_path, target_file_path))
         else:
             files_to_copy.append((source_file_path, target_file_path))
 
     if files_skipped:
-        print_center(f'The following {len(files_skipped)} files have diverged:')
+        print_center(f'\nThe following {len(files_skipped)} files have diverged:')
         for data_file_path, target_file_path in files_skipped:
             print_aligned('Source (gathered  file) >> ', data_file_path,
-                          [('Target (dispersed file) >> ', target_file_path)])
+                        [('Target (dispersed file) >> ', target_file_path)])  # noqa
 
         confirm_recover_files = input(f'Type "YES" to confirm you want to still recover {len(files_to_copy)} files  ')
         if confirm_recover_files != 'YES':
             raise GatherException('Undo files and dispersed files have diverged. ' +
                             'Unfortunetly you will have to fix this manually. 🛠️')
+        print('\n') # Next section separator
 
-    print_center('Reverting dispersed files from undo:')
-    for source_file_path, target_file_path in files_to_copy:
-        print('\n')
-        shutil.copy(source_file_path, target_file_path)
-        print_aligned('Source file) >> ', source_file_path, [('Target file) >> ', target_file_path)])
+    if files_identical:
+        print_center(f'The following {len(files_identical)} files are identical no undo needed:')
 
-    print(f'Successfuly reverted {len(files_to_copy)} files! Undo skipped on {len(files_skipped)} files!')
+        for undo_file_path, target_file_path in files_identical:
+            print('\n')
+            print_aligned('Source (undo      file) >> ', undo_file_path,
+                        [('Target (dispersed file) >> ', target_file_path)])  # noqa
+
+        print('\n') # Next section separator
+
+    if files_to_copy:
+        print_center('Reverting dispersed files from undo:')
+        for source_file_path, target_file_path in files_to_copy:
+            print('\n')
+            shutil.copy(source_file_path, target_file_path)
+            print_aligned('Source file) >> ', source_file_path, [('Target file) >> ', target_file_path)])
+
+    print(f'Successfuly reverted {len(files_to_copy)} files. ' +
+          (f'Undo skipped on {len(files_skipped)} diverged files! ' if files_skipped else '') +
+          (f'Undo not needed on {len(files_identical)} identical files.' if files_identical else ''))
 
 
 def main():
