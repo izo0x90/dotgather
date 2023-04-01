@@ -40,6 +40,7 @@ Warning: Use at your own risk, someone probably did this in a better way and has
 
 ## Installation
 
+### Starting from scratch
 Download the `dotgather.py` file to anylocation on your desired machine.
 
 Execute the script in install mode with python and pass in the desired dir path for your new dotfile repo:
@@ -47,6 +48,12 @@ Execute the script in install mode with python and pass in the desired dir path 
 python3 ./dotgather.py --install INSTALL_DIR_PATH
 ```
 
+### Adding a new machine to an existing dot repo
+If you already made a repo for some machines and you want to add a new machine to that repo just clone the repo to the new machine.
+Add the QoL changes to your shell config if desired.
+Follow the normal machine setup process from there.
+
+### QoL
 To be able to run the script command without chaning to the repo dir:
 
 - Add `INSTALL_DIR_PATH` to you system path
