@@ -21,7 +21,7 @@
 # - Fully test and re-enable disperse ✓
 # - Add README.MD with usage instructions ✓
 # - Add check in undo if exiting same as undo ✓
-# - Better indication when no changes to gathered files have occurred
+# - Better indication when no changes to gathered files have occurred (ID0)
 # - Maybe more granular disperse as option? Next ver. maybe
 # - Implement disperse diff-only? Next ver. maybe
 
@@ -66,6 +66,7 @@ class GatherException(Exception):
 
 # Util. funcs.
 def mkdir_or_existing(directory_path):
+    print('Directory is:', directory_path)
     try:
         os.makedirs(directory_path)
     except FileExistsError:
@@ -291,9 +292,13 @@ def disperse_dotfiles(directory):
 
         print_aligned(f'Source >> ', source_file_path, [('Target >> ', target_file_path)])
 
-        if not git_diff(source_file_path, target_file_path):
-            print('These two files are the same, skipping dispersal. ♻️')
-            continue
+        print(target_file_path)
+
+        # TODO: (ID0)(Hristo)When dispersing to new machines this check was not working out and needs 
+        #       to be fixed eventually for now doing the redundant work is fine
+        # if not git_diff(source_file_path, target_file_path):
+        #     print('These two files are the same, skipping dispersal. ♻️')
+        #     continue
 
         # Check if a file already exist in target location and backup for undo
         if target_exists:
@@ -315,6 +320,8 @@ def disperse_dotfiles(directory):
             print_center('Created undo for 💾')
 
         # Copy repo dotfile to target location
+        new_dir, _ = split_path_dir_file(target_file_path)
+        mkdir_or_existing(new_dir)
         shutil.copy(source_file_path, target_file_path)
         files_dispersed += 1
         print('File dispersed. 🌱')
